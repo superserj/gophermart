@@ -9,28 +9,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 
+	"github.com/superserj/gophermart/internal/auth"
 	"github.com/superserj/gophermart/internal/config"
+	"github.com/superserj/gophermart/internal/handler"
 	"github.com/superserj/gophermart/internal/logger"
-	"github.com/superserj/gophermart/internal/middleware"
 	"github.com/superserj/gophermart/internal/repository"
 )
-
-type pinger interface {
-	Ping(ctx context.Context) error
-}
-
-func pingHandler(p pinger) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if err := p.Ping(r.Context()); err != nil {
-			http.Error(w, "database unavailable", http.StatusInternalServerError)
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-	}
-}
 
 func main() {
 	cfg, err := config.New()
@@ -54,12 +40,10 @@ func main() {
 		}
 	}()
 
-	r := chi.NewRouter()
-	r.Use(logger.WithLogging)
-	r.Use(middleware.Gzip)
-	r.Get("/ping", pingHandler(repo))
+	a := auth.New(cfg.AuthSecret)
+	h := handler.New(repo, a)
 
-	srv := &http.Server{Addr: cfg.RunAddress, Handler: r}
+	srv := &http.Server{Addr: cfg.RunAddress, Handler: handler.NewRouter(h, a)}
 	go func() {
 		logger.Log.Info("starting server", zap.String("addr", cfg.RunAddress))
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
