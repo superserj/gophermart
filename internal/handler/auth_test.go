@@ -1,0 +1,75 @@
+package handler
+
+import (
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/superserj/gophermart/internal/auth"
+	"github.com/superserj/gophermart/internal/repository"
+)
+
+func newTestHandler(store Store) (*Handler, *auth.Authenticator) {
+	a := auth.New("test-secret")
+	return New(store, a), a
+}
+
+func TestRegisterSuccess(t *testing.T) {
+	h, _ := newTestHandler(newFakeStore())
+	req := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"login":"bob","password":"pw"}`))
+	rec := httptest.NewRecorder()
+	h.Register(rec, req)
+	res := rec.Result()
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusOK, res.StatusCode)
+	require.NotEmpty(t, res.Cookies(), "register must set auth cookie")
+}
+
+func TestRegisterBadJSON(t *testing.T) {
+	h, _ := newTestHandler(newFakeStore())
+	req := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{not-json`))
+	rec := httptest.NewRecorder()
+	h.Register(rec, req)
+	res := rec.Result()
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+}
+
+func TestRegisterEmptyFields(t *testing.T) {
+	h, _ := newTestHandler(newFakeStore())
+	req := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"login":"","password":""}`))
+	rec := httptest.NewRecorder()
+	h.Register(rec, req)
+	res := rec.Result()
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+}
+
+func TestRegisterLoginTaken(t *testing.T) {
+	f := newFakeStore()
+	f.createErr = repository.ErrLoginTaken
+	h, _ := newTestHandler(f)
+	req := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"login":"bob","password":"pw"}`))
+	rec := httptest.NewRecorder()
+	h.Register(rec, req)
+	res := rec.Result()
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusConflict, res.StatusCode)
+}
+
+func TestRegisterStorageError(t *testing.T) {
+	f := newFakeStore()
+	f.createErr = errors.New("db down")
+	h, _ := newTestHandler(f)
+	req := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"login":"bob","password":"pw"}`))
+	rec := httptest.NewRecorder()
+	h.Register(rec, req)
+	res := rec.Result()
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+}

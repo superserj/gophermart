@@ -1,0 +1,46 @@
+package handler
+
+import (
+	"encoding/json"
+	"errors"
+	"net/http"
+	"strconv"
+
+	"go.uber.org/zap"
+
+	"github.com/superserj/gophermart/internal/auth"
+	"github.com/superserj/gophermart/internal/logger"
+	"github.com/superserj/gophermart/internal/model"
+	"github.com/superserj/gophermart/internal/repository"
+)
+
+// Register — POST /api/user/register.
+func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
+	var req model.AuthRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+	if req.Login == "" || req.Password == "" {
+		http.Error(w, "login and password are required", http.StatusBadRequest)
+		return
+	}
+	hash, err := auth.HashPassword(req.Password)
+	if err != nil {
+		logger.Log.Warn("hash password failed", zap.Error(err))
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	id, err := h.store.CreateUser(r.Context(), req.Login, hash)
+	if err != nil {
+		if errors.Is(err, repository.ErrLoginTaken) {
+			http.Error(w, "login already taken", http.StatusConflict)
+			return
+		}
+		logger.Log.Warn("create user failed", zap.Error(err))
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	h.auth.SetAuthCookie(w, strconv.FormatInt(id, 10))
+	w.WriteHeader(http.StatusOK)
+}
