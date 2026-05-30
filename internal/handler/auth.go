@@ -44,3 +44,32 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	h.auth.SetAuthCookie(w, strconv.FormatInt(id, 10))
 	w.WriteHeader(http.StatusOK)
 }
+
+// Login — POST /api/user/login.
+func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+	var req model.AuthRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+	if req.Login == "" || req.Password == "" {
+		http.Error(w, "login and password are required", http.StatusBadRequest)
+		return
+	}
+	id, hash, err := h.store.GetUserByLogin(r.Context(), req.Login)
+	if err != nil {
+		if errors.Is(err, repository.ErrUserNotFound) {
+			http.Error(w, "invalid login or password", http.StatusUnauthorized)
+			return
+		}
+		logger.Log.Warn("get user failed", zap.Error(err))
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if err := auth.CheckPassword(hash, req.Password); err != nil {
+		http.Error(w, "invalid login or password", http.StatusUnauthorized)
+		return
+	}
+	h.auth.SetAuthCookie(w, strconv.FormatInt(id, 10))
+	w.WriteHeader(http.StatusOK)
+}

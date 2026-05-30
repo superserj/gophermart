@@ -73,3 +73,66 @@ func TestRegisterStorageError(t *testing.T) {
 	defer res.Body.Close()
 	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
 }
+
+func TestLoginSuccess(t *testing.T) {
+	f := newFakeStore()
+	hash, err := auth.HashPassword("pw")
+	require.NoError(t, err)
+	f.byID["bob"] = 5
+	f.hashes["bob"] = hash
+	h, _ := newTestHandler(f)
+	req := httptest.NewRequest(http.MethodPost, "/api/user/login", strings.NewReader(`{"login":"bob","password":"pw"}`))
+	rec := httptest.NewRecorder()
+	h.Login(rec, req)
+	res := rec.Result()
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusOK, res.StatusCode)
+	require.NotEmpty(t, res.Cookies())
+}
+
+func TestLoginBadJSON(t *testing.T) {
+	h, _ := newTestHandler(newFakeStore())
+	req := httptest.NewRequest(http.MethodPost, "/api/user/login", strings.NewReader(`{`))
+	rec := httptest.NewRecorder()
+	h.Login(rec, req)
+	res := rec.Result()
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+}
+
+func TestLoginUnknownUser(t *testing.T) {
+	h, _ := newTestHandler(newFakeStore())
+	req := httptest.NewRequest(http.MethodPost, "/api/user/login", strings.NewReader(`{"login":"ghost","password":"pw"}`))
+	rec := httptest.NewRecorder()
+	h.Login(rec, req)
+	res := rec.Result()
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusUnauthorized, res.StatusCode)
+}
+
+func TestLoginWrongPassword(t *testing.T) {
+	f := newFakeStore()
+	hash, err := auth.HashPassword("right")
+	require.NoError(t, err)
+	f.byID["bob"] = 5
+	f.hashes["bob"] = hash
+	h, _ := newTestHandler(f)
+	req := httptest.NewRequest(http.MethodPost, "/api/user/login", strings.NewReader(`{"login":"bob","password":"wrong"}`))
+	rec := httptest.NewRecorder()
+	h.Login(rec, req)
+	res := rec.Result()
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusUnauthorized, res.StatusCode)
+}
+
+func TestLoginStorageError(t *testing.T) {
+	f := newFakeStore()
+	f.getErr = errors.New("db down")
+	h, _ := newTestHandler(f)
+	req := httptest.NewRequest(http.MethodPost, "/api/user/login", strings.NewReader(`{"login":"bob","password":"pw"}`))
+	rec := httptest.NewRecorder()
+	h.Login(rec, req)
+	res := rec.Result()
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+}
