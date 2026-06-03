@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/superserj/gophermart/internal/auth"
+	"github.com/superserj/gophermart/internal/model"
 )
 
 // Store — зависимости HTTP-слоя. Интерфейс растёт по инкрементам.
@@ -13,7 +14,8 @@ type Store interface {
 	Ping(ctx context.Context) error
 	CreateUser(ctx context.Context, login, passwordHash string) (int64, error)
 	GetUserByLogin(ctx context.Context, login string) (int64, string, error)
-	// orders (Task 19): SaveOrder, ListOrdersByUser
+	SaveOrder(ctx context.Context, number string, userID int64) (bool, error)
+	ListOrdersByUser(ctx context.Context, userID int64) ([]model.Order, error)
 	// balance (Task 28): GetBalance, Withdraw, ListWithdrawals
 }
 

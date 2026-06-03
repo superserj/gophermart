@@ -27,4 +27,7 @@ func NewRouter(h *Handler, a *auth.Authenticator) chi.Router {
 }
 
 // registerProtected — точка расширения для защищённых маршрутов (orders, balance).
-func (h *Handler) registerProtected(r chi.Router) {}
+func (h *Handler) registerProtected(r chi.Router) {
+	r.Post("/api/user/orders", h.UploadOrder)
+	r.Get("/api/user/orders", h.ListOrders)
+}
