@@ -11,6 +11,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/superserj/gophermart/internal/accrual"
 	"github.com/superserj/gophermart/internal/auth"
 	"github.com/superserj/gophermart/internal/config"
 	"github.com/superserj/gophermart/internal/handler"
@@ -43,6 +44,14 @@ func main() {
 	a := auth.New(cfg.AuthSecret)
 	h := handler.New(repo, a)
 
+	pollCtx, pollCancel := context.WithCancel(context.Background())
+	poller := accrual.NewPoller(repo, accrual.NewClient(cfg.AccrualSystemAddress))
+	pollDone := make(chan struct{})
+	go func() {
+		poller.Run(pollCtx)
+		close(pollDone)
+	}()
+
 	srv := &http.Server{Addr: cfg.RunAddress, Handler: handler.NewRouter(h, a)}
 	go func() {
 		logger.Log.Info("starting server", zap.String("addr", cfg.RunAddress))
@@ -60,4 +69,7 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Log.Error("server shutdown", zap.Error(err))
 	}
+
+	pollCancel()
+	<-pollDone
 }
