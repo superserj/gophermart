@@ -7,6 +7,7 @@ import (
 
 	"github.com/superserj/gophermart/internal/auth"
 	"github.com/superserj/gophermart/internal/model"
+	"github.com/superserj/gophermart/internal/money"
 )
 
 // Store — зависимости HTTP-слоя. Интерфейс растёт по инкрементам.
@@ -16,7 +17,9 @@ type Store interface {
 	GetUserByLogin(ctx context.Context, login string) (int64, string, error)
 	SaveOrder(ctx context.Context, number string, userID int64) (bool, error)
 	ListOrdersByUser(ctx context.Context, userID int64) ([]model.Order, error)
-	// balance (Task 28): GetBalance, Withdraw, ListWithdrawals
+	GetBalance(ctx context.Context, userID int64) (current, withdrawn money.Points, err error)
+	Withdraw(ctx context.Context, userID int64, order string, sum money.Points) error
+	ListWithdrawals(ctx context.Context, userID int64) ([]model.Withdrawal, error)
 }
 
 // Handler держит зависимости HTTP-слоя.
