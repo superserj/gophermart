@@ -41,6 +41,25 @@ func TestRouterPing(t *testing.T) {
 	assert.Equal(t, http.StatusOK, res.StatusCode)
 }
 
+func TestRouterBalanceRoutesRequireAuth(t *testing.T) {
+	h, a := newTestHandler(newFakeStore())
+	srv := httptest.NewServer(NewRouter(h, a))
+	defer srv.Close()
+	cases := []struct{ method, path string }{
+		{http.MethodGet, "/api/user/balance"},
+		{http.MethodPost, "/api/user/balance/withdraw"},
+		{http.MethodGet, "/api/user/withdrawals"},
+	}
+	for _, c := range cases {
+		req, err := http.NewRequest(c.method, srv.URL+c.path, nil)
+		require.NoError(t, err)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode, c.path)
+	}
+}
+
 func TestRouterProtectedRequiresAuth(t *testing.T) {
 	h, a := newTestHandler(newFakeStore())
 	r := NewRouter(h, a)
