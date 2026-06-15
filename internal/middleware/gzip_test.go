@@ -45,3 +45,32 @@ func TestGzipResponseTextPlain(t *testing.T) {
 		t.Fatalf("decompressed body = %q", body)
 	}
 }
+
+func TestGzipRequestDecompression(t *testing.T) {
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	if _, err := zw.Write([]byte("compressed-payload")); err != nil {
+		t.Fatalf("gzip write: %v", err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("gzip close: %v", err)
+	}
+
+	var got []byte
+	h := Gzip(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read body: %v", err)
+		}
+		got = body
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest(http.MethodPost, "/", &buf)
+	req.Header.Set("Content-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if !bytes.Equal(got, []byte("compressed-payload")) {
+		t.Fatalf("decompressed request body = %q, want compressed-payload", got)
+	}
+}
