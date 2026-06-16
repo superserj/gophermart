@@ -17,6 +17,36 @@ func TestDefaults(t *testing.T) {
 	if cfg.LogLevel != "info" {
 		t.Fatalf("default LogLevel = %q", cfg.LogLevel)
 	}
+	if cfg.AuthSecret != "" {
+		t.Fatalf("default AuthSecret = %q, want empty", cfg.AuthSecret)
+	}
+}
+
+func TestResolveSecretKeepsExplicit(t *testing.T) {
+	got, err := ResolveSecret("my-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "my-secret" {
+		t.Fatalf("ResolveSecret(%q) = %q, want unchanged", "my-secret", got)
+	}
+}
+
+func TestResolveSecretGeneratesRandom(t *testing.T) {
+	first, err := ResolveSecret("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == "" {
+		t.Fatal("ResolveSecret(\"\") returned empty secret")
+	}
+	second, err := ResolveSecret("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatalf("ResolveSecret(\"\") produced identical secrets %q", first)
+	}
 }
 
 func TestFlags(t *testing.T) {

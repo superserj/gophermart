@@ -41,7 +41,14 @@ func main() {
 		}
 	}()
 
-	a := auth.New(cfg.AuthSecret)
+	secret, err := config.ResolveSecret(cfg.AuthSecret)
+	if err != nil {
+		logger.Log.Fatal("resolve auth secret", zap.Error(err))
+	}
+	if cfg.AuthSecret == "" {
+		logger.Log.Warn("AUTH_SECRET не задан, используется эфемерный случайный секрет")
+	}
+	a := auth.New(secret)
 	h := handler.New(repo, a)
 
 	pollCtx, pollCancel := context.WithCancel(context.Background())
