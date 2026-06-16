@@ -87,6 +87,9 @@ func (p *Poller) scan(ctx context.Context) {
 }
 
 func (p *Poller) process(ctx context.Context, number string) {
+	if p.isThrottled() { // дешёвая защита: троттл мог быть выставлен соседним воркером из того же burst
+		return
+	}
 	info, err := p.client.GetOrder(ctx, number)
 	if err != nil {
 		var tooMany *TooManyRequestsError

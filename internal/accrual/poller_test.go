@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -16,6 +17,17 @@ import (
 	"github.com/superserj/gophermart/internal/model"
 	"github.com/superserj/gophermart/internal/money"
 )
+
+// countingFetcher всегда отвечает 429 и считает число обращений.
+type countingFetcher struct {
+	calls      int32
+	retryAfter time.Duration
+}
+
+func (c *countingFetcher) GetOrder(context.Context, string) (*OrderInfo, error) {
+	atomic.AddInt32(&c.calls, 1)
+	return nil, &TooManyRequestsError{RetryAfter: c.retryAfter}
+}
 
 func TestMain(m *testing.M) {
 	_ = logger.Initialize("error")
@@ -107,6 +119,41 @@ func TestPollerThrottlesOn429(t *testing.T) {
 	assert.LessOrEqual(t, atomic.LoadInt32(&calls), int32(3))
 	s, _ := repo.get("79927398713")
 	assert.Equal(t, model.StatusNew, s)
+}
+
+func TestPollerProcessSkipsWhenThrottled(t *testing.T) {
+	fc := &countingFetcher{retryAfter: time.Hour}
+	p := NewPoller(newMockRepo("79927398713"), fc)
+	p.throttle(time.Hour)
+	p.process(context.Background(), "79927398713")
+	assert.Zero(t, atomic.LoadInt32(&fc.calls), "process must early-return while throttled")
+}
+
+func TestPollerThrottleBoundsBurst(t *testing.T) {
+	const n = 20
+	nums := make([]string, n)
+	for i := range nums {
+		nums[i] = strconv.Itoa(1000000 + i)
+	}
+	fc := &countingFetcher{retryAfter: time.Second}
+	repo := newMockRepo(nums...)
+	p := NewPoller(repo, fc)
+	p.period = 10 * time.Millisecond
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { p.Run(ctx); close(done) }()
+	time.Sleep(200 * time.Millisecond)
+	before := atomic.LoadInt32(&fc.calls)
+	time.Sleep(150 * time.Millisecond)
+	after := atomic.LoadInt32(&fc.calls)
+	cancel()
+	<-done
+	assert.LessOrEqual(t, after, int32(pollWorkers), "calls bounded by worker pool while throttled")
+	assert.Equal(t, before, after, "no new accrual calls after throttle set")
+	for _, num := range nums {
+		s, _ := repo.get(num)
+		assert.Equal(t, model.StatusNew, s)
+	}
 }
 
 func TestPollerGracefulShutdown(t *testing.T) {
