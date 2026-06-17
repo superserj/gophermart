@@ -87,7 +87,7 @@ func Gzip(next http.Handler) http.Handler {
 		if strings.Contains(r.Header.Get("Content-Encoding"), "gzip") {
 			cr, err := newCompressReader(r.Body)
 			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
+				http.Error(w, "invalid gzip body", http.StatusBadRequest)
 				return
 			}
 			r.Body = cr

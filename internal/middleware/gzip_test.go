@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -43,6 +44,25 @@ func TestGzipResponseTextPlain(t *testing.T) {
 	body, _ := io.ReadAll(zr)
 	if !bytes.Equal(body, []byte("12345678903")) {
 		t.Fatalf("decompressed body = %q", body)
+	}
+}
+
+func TestGzipRequestInvalidBody400(t *testing.T) {
+	called := false
+	h := Gzip(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("not-gzip-data"))
+	req.Header.Set("Content-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+	if called {
+		t.Fatal("next handler must not be called on invalid gzip body")
 	}
 }
 
