@@ -2,6 +2,7 @@ package money
 
 import (
 	"encoding/json"
+	"math"
 	"testing"
 )
 
@@ -40,6 +41,21 @@ func TestFromFloatAndFloat(t *testing.T) {
 	}
 	if float32(FromFloat(729.98).Float()) != float32(729.98) {
 		t.Fatal("Float must round-trip to float32(729.98)")
+	}
+}
+
+func TestFromFloatNaNInf(t *testing.T) {
+	if FromFloat(math.NaN()) != Points(0) {
+		t.Fatalf("FromFloat(NaN) = %d, want 0", FromFloat(math.NaN()))
+	}
+	if FromFloat(math.Inf(1)) != Points(0) {
+		t.Fatalf("FromFloat(+Inf) = %d, want 0", FromFloat(math.Inf(1)))
+	}
+	if FromFloat(math.Inf(-1)) != Points(0) {
+		t.Fatalf("FromFloat(-Inf) = %d, want 0", FromFloat(math.Inf(-1)))
+	}
+	if FromFloat(729.98) != Points(72998) {
+		t.Fatalf("FromFloat(729.98) = %d, want 72998", FromFloat(729.98))
 	}
 }
 

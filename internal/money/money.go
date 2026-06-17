@@ -11,7 +11,14 @@ import (
 type Points int64
 
 // FromFloat переводит баллы (float) в Points с округлением до копейки.
-func FromFloat(f float64) Points { return Points(math.Round(f * 100)) }
+// NaN/Inf (мусор от accrual) дают implementation-defined int64 при конверсии,
+// поэтому отбраковываются в 0.
+func FromFloat(f float64) Points {
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return Points(0)
+	}
+	return Points(math.Round(f * 100))
+}
 
 // Float возвращает сумму в баллах.
 func (p Points) Float() float64 { return float64(p) / 100 }
