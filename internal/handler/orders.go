@@ -15,6 +15,10 @@ import (
 	"github.com/superserj/gophermart/internal/repository"
 )
 
+// maxOrderBodyBytes — щедрый лимит тела POST /api/user/orders: номер заказа
+// короткий, реальный клиент/автотест укладывается, мусорный payload отсекается.
+const maxOrderBodyBytes = 4096
+
 // UploadOrder — POST /api/user/orders. Тело — голый номер заказа (text/plain).
 func (h *Handler) UploadOrder(w http.ResponseWriter, r *http.Request) {
 	userID, ok := currentUserID(r)
@@ -22,9 +26,11 @@ func (h *Handler) UploadOrder(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	body, err := io.ReadAll(r.Body)
+	// Номер заказа короткий; ограничиваем тело, чтобы мусорный payload
+	// не прошёл Луна и не попал в TEXT-ключ (защита от DoS).
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxOrderBodyBytes))
 	if err != nil {
-		http.Error(w, "cannot read body", http.StatusInternalServerError)
+		http.Error(w, "cannot read body", http.StatusBadRequest)
 		return
 	}
 	number := strings.TrimSpace(string(body))

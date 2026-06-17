@@ -67,6 +67,15 @@ func TestUploadOrder(t *testing.T) {
 		h.UploadOrder(rr, authedReq(http.MethodPost, "   ", "1"))
 		assert.Equal(t, http.StatusBadRequest, rr.Code)
 	})
+	t.Run("oversized body 400 no store", func(t *testing.T) {
+		f := &fakeStore{}
+		h := &Handler{store: f}
+		rr := httptest.NewRecorder()
+		huge := strings.Repeat("0", 100*1024)
+		h.UploadOrder(rr, authedReq(http.MethodPost, huge, "1"))
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+		assert.False(t, f.saveCalled)
+	})
 }
 
 func TestListOrders(t *testing.T) {
