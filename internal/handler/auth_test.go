@@ -14,6 +14,31 @@ import (
 	"github.com/superserj/gophermart/internal/repository"
 )
 
+func TestRegisterBodyTooLarge(t *testing.T) {
+	f := newFakeStore()
+	h, _ := newTestHandler(f)
+	body := `{"login":"` + strings.Repeat("a", maxJSONBodyBytes+1) + `","password":"pw"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	h.Register(rec, req)
+	res := rec.Result()
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+	assert.Empty(t, f.byID, "store must not be called when body exceeds limit")
+}
+
+func TestLoginBodyTooLarge(t *testing.T) {
+	f := newFakeStore()
+	h, _ := newTestHandler(f)
+	body := `{"login":"` + strings.Repeat("a", maxJSONBodyBytes+1) + `","password":"pw"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/user/login", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	h.Login(rec, req)
+	res := rec.Result()
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+}
+
 func newTestHandler(store Store) (*Handler, *auth.Authenticator) {
 	a := auth.New("test-secret")
 	return New(store, a), a

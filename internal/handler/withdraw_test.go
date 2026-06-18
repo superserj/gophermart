@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -11,6 +12,16 @@ import (
 	"github.com/superserj/gophermart/internal/money"
 	"github.com/superserj/gophermart/internal/repository"
 )
+
+func TestWithdrawHandlerBodyTooLarge(t *testing.T) {
+	f := &fakeStore{}
+	h := &Handler{store: f}
+	body := `{"order":"` + strings.Repeat("7", maxJSONBodyBytes+1) + `","sum":10}`
+	rr := httptest.NewRecorder()
+	h.Withdraw(rr, authedBal(http.MethodPost, "/api/user/balance/withdraw", body))
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	require.Empty(t, f.gotOrder, "store must not be called when body exceeds limit")
+}
 
 func TestWithdrawHandlerOK(t *testing.T) {
 	f := &fakeStore{}

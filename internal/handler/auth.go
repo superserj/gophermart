@@ -14,10 +14,14 @@ import (
 	"github.com/superserj/gophermart/internal/repository"
 )
 
+// maxJSONBodyBytes — щедрый лимит на тело JSON-запроса. Реальные {login,password}/
+// {order,sum} крошечные; лимит защищает от memory-DoS и gzip-бомбы.
+const maxJSONBodyBytes = 1 << 16 // 64 КБ
+
 // Register — POST /api/user/register.
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	var req model.AuthRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxJSONBodyBytes)).Decode(&req); err != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
 		return
 	}
@@ -48,7 +52,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 // Login — POST /api/user/login.
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	var req model.AuthRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxJSONBodyBytes)).Decode(&req); err != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
 		return
 	}
