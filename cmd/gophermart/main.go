@@ -59,7 +59,14 @@ func main() {
 		close(pollDone)
 	}()
 
-	srv := &http.Server{Addr: cfg.RunAddress, Handler: handler.NewRouter(h, a)}
+	srv := &http.Server{
+		Addr:              cfg.RunAddress,
+		Handler:           handler.NewRouter(h, a),
+		ReadHeaderTimeout: 10 * time.Second, // защита от slowloris (gosec G112)
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
 	go func() {
 		logger.Log.Info("starting server", zap.String("addr", cfg.RunAddress))
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
