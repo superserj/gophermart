@@ -104,6 +104,10 @@ func (p *Poller) process(ctx context.Context, number string) {
 		return
 	}
 	status := mapStatus(info.Status)
+	if info.Accrual < 0 { // начисление не может быть отрицательным — защищаемся от порчи баланса
+		logger.Log.Warn("negative accrual clamped to zero", zap.String("number", number), zap.Float64("accrual", info.Accrual))
+		info.Accrual = 0
+	}
 	if err := p.repo.ApplyAccrual(ctx, number, status, money.FromFloat(info.Accrual)); err != nil {
 		logger.Log.Warn("apply accrual", zap.String("number", number), zap.Error(err))
 	}

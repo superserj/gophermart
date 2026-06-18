@@ -77,6 +77,29 @@ func (m *mockRepo) get(number string) (string, money.Points) {
 	return m.statuses[number], m.accruals[number]
 }
 
+// stubFetcher всегда отдаёт фиксированный OrderInfo.
+type stubFetcher struct{ info *OrderInfo }
+
+func (s *stubFetcher) GetOrder(context.Context, string) (*OrderInfo, error) { return s.info, nil }
+
+func TestPollerClampsNegativeAccrual(t *testing.T) {
+	repo := newMockRepo("79927398713")
+	p := NewPoller(repo, &stubFetcher{info: &OrderInfo{Order: "79927398713", Status: "PROCESSED", Accrual: -50}})
+	p.process(context.Background(), "79927398713")
+	s, a := repo.get("79927398713")
+	assert.Equal(t, model.StatusProcessed, s)
+	assert.Equal(t, money.Points(0), a, "negative accrual must be clamped to 0")
+}
+
+func TestPollerPositiveAccrualUnchanged(t *testing.T) {
+	repo := newMockRepo("79927398713")
+	p := NewPoller(repo, &stubFetcher{info: &OrderInfo{Order: "79927398713", Status: "PROCESSED", Accrual: 100.5}})
+	p.process(context.Background(), "79927398713")
+	s, a := repo.get("79927398713")
+	assert.Equal(t, model.StatusProcessed, s)
+	assert.Equal(t, money.FromFloat(100.5), a)
+}
+
 func TestPollerReachesProcessed(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
