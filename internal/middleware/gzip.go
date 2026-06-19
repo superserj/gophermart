@@ -76,6 +76,7 @@ func (c *compressReader) Close() error {
 	return c.zr.Close()
 }
 
+// Gzip — middleware: распаковывает gzip-тело запроса и сжимает ответ, если клиент это поддерживает.
 func Gzip(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ow := w

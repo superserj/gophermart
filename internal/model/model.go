@@ -9,10 +9,14 @@ import (
 
 // Статусы обработки заказа. INVALID и PROCESSED — терминальные.
 const (
-	StatusNew        = "NEW"
+	// StatusNew — заказ загружен, но ещё не обработан.
+	StatusNew = "NEW"
+	// StatusProcessing — заказ в обработке начислением.
 	StatusProcessing = "PROCESSING"
-	StatusInvalid    = "INVALID"
-	StatusProcessed  = "PROCESSED"
+	// StatusInvalid — заказ не принят к расчёту (терминальный).
+	StatusInvalid = "INVALID"
+	// StatusProcessed — расчёт начисления завершён (терминальный).
+	StatusProcessed = "PROCESSED"
 )
 
 // User — пользователь системы.

@@ -20,6 +20,7 @@ type TooManyRequestsError struct {
 	RetryAfter time.Duration
 }
 
+// Error возвращает текст ошибки с длительностью Retry-After.
 func (e *TooManyRequestsError) Error() string {
 	return fmt.Sprintf("accrual: too many requests, retry after %s", e.RetryAfter)
 }
