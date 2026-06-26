@@ -8,7 +8,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/superserj/gophermart/internal/logger"
 	"github.com/superserj/gophermart/internal/money"
 )
 
@@ -31,6 +30,7 @@ type orderFetcher interface {
 type Poller struct {
 	repo   Repository
 	client orderFetcher
+	log    *zap.Logger
 	sem    chan struct{}
 	period time.Duration
 
@@ -40,8 +40,9 @@ type Poller struct {
 }
 
 // NewPoller создаёт поллер с пулом pollWorkers и периодом pollPeriod.
-func NewPoller(repo Repository, client orderFetcher) *Poller {
-	return &Poller{repo: repo, client: client, sem: make(chan struct{}, pollWorkers), period: pollPeriod}
+// Логгер передаётся явно, без обращения к глобальному состоянию.
+func NewPoller(repo Repository, client orderFetcher, log *zap.Logger) *Poller {
+	return &Poller{repo: repo, client: client, log: log, sem: make(chan struct{}, pollWorkers), period: pollPeriod}
 }
 
 // Run сканирует БД по тикеру до отмены контекста, затем дожидается воркеров.
@@ -65,7 +66,7 @@ func (p *Poller) scan(ctx context.Context) {
 	}
 	numbers, err := p.repo.ListUnfinishedOrders(ctx)
 	if err != nil {
-		logger.Log.Warn("list unfinished orders", zap.Error(err))
+		p.log.Warn("list unfinished orders", zap.Error(err))
 		return
 	}
 	for _, number := range numbers {
@@ -99,17 +100,17 @@ func (p *Poller) process(ctx context.Context, number string) {
 		case errors.As(err, &tooMany):
 			p.throttle(tooMany.RetryAfter)
 		default:
-			logger.Log.Warn("accrual get order", zap.String("number", number), zap.Error(err))
+			p.log.Warn("accrual get order", zap.String("number", number), zap.Error(err))
 		}
 		return
 	}
 	status := mapStatus(info.Status)
 	if info.Accrual < 0 { // начисление не может быть отрицательным — защищаемся от порчи баланса
-		logger.Log.Warn("negative accrual clamped to zero", zap.String("number", number), zap.Float64("accrual", info.Accrual))
+		p.log.Warn("negative accrual clamped to zero", zap.String("number", number), zap.Float64("accrual", info.Accrual))
 		info.Accrual = 0
 	}
 	if err := p.repo.ApplyAccrual(ctx, number, status, money.FromFloat(info.Accrual)); err != nil {
-		logger.Log.Warn("apply accrual", zap.String("number", number), zap.Error(err))
+		p.log.Warn("apply accrual", zap.String("number", number), zap.Error(err))
 	}
 }
 

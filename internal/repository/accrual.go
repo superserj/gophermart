@@ -33,7 +33,7 @@ func (s *DBStorage) ListUnfinishedOrders(ctx context.Context) ([]string, error) 
 // не трогая уже терминальные заказы.
 func (s *DBStorage) ApplyAccrual(ctx context.Context, number, status string, accrual money.Points) error {
 	_, err := s.pool.Exec(ctx,
-		`UPDATE orders SET status = $2, accrual = $3
+		`UPDATE orders SET status = $2::order_status, accrual = $3
 		 WHERE number = $1 AND status NOT IN ('INVALID', 'PROCESSED')`,
 		number, status, int64(accrual))
 	return err

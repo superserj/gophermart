@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 
 	"github.com/superserj/gophermart/internal/auth"
 	"github.com/superserj/gophermart/internal/repository"
@@ -41,7 +42,7 @@ func TestLoginBodyTooLarge(t *testing.T) {
 
 func newTestHandler(store Store) (*Handler, *auth.Authenticator) {
 	a := auth.New("test-secret")
-	return New(store, a), a
+	return New(store, a, zap.NewNop()), a
 }
 
 func TestRegisterSuccess(t *testing.T) {
@@ -103,7 +104,7 @@ func TestLoginSuccess(t *testing.T) {
 	f := newFakeStore()
 	hash, err := auth.HashPassword("pw")
 	require.NoError(t, err)
-	f.byID["bob"] = 5
+	f.byID["bob"] = "5"
 	f.hashes["bob"] = hash
 	h, _ := newTestHandler(f)
 	req := httptest.NewRequest(http.MethodPost, "/api/user/login", strings.NewReader(`{"login":"bob","password":"pw"}`))
@@ -139,7 +140,7 @@ func TestLoginWrongPassword(t *testing.T) {
 	f := newFakeStore()
 	hash, err := auth.HashPassword("right")
 	require.NoError(t, err)
-	f.byID["bob"] = 5
+	f.byID["bob"] = "5"
 	f.hashes["bob"] = hash
 	h, _ := newTestHandler(f)
 	req := httptest.NewRequest(http.MethodPost, "/api/user/login", strings.NewReader(`{"login":"bob","password":"wrong"}`))

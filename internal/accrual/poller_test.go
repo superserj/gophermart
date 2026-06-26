@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -12,11 +11,16 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/zap"
 
-	"github.com/superserj/gophermart/internal/logger"
 	"github.com/superserj/gophermart/internal/model"
 	"github.com/superserj/gophermart/internal/money"
 )
+
+// newTestPoller собирает поллер с no-op логгером для тестов.
+func newTestPoller(repo Repository, client orderFetcher) *Poller {
+	return NewPoller(repo, client, zap.NewNop())
+}
 
 // countingFetcher всегда отвечает 429 и считает число обращений.
 type countingFetcher struct {
@@ -27,11 +31,6 @@ type countingFetcher struct {
 func (c *countingFetcher) GetOrder(context.Context, string) (*OrderInfo, error) {
 	atomic.AddInt32(&c.calls, 1)
 	return nil, &TooManyRequestsError{RetryAfter: c.retryAfter}
-}
-
-func TestMain(m *testing.M) {
-	_ = logger.Initialize("error")
-	os.Exit(m.Run())
 }
 
 type mockRepo struct {
@@ -84,7 +83,7 @@ func (s *stubFetcher) GetOrder(context.Context, string) (*OrderInfo, error) { re
 
 func TestPollerClampsNegativeAccrual(t *testing.T) {
 	repo := newMockRepo("79927398713")
-	p := NewPoller(repo, &stubFetcher{info: &OrderInfo{Order: "79927398713", Status: "PROCESSED", Accrual: -50}})
+	p := newTestPoller(repo, &stubFetcher{info: &OrderInfo{Order: "79927398713", Status: "PROCESSED", Accrual: -50}})
 	p.process(context.Background(), "79927398713")
 	s, a := repo.get("79927398713")
 	assert.Equal(t, model.StatusProcessed, s)
@@ -93,7 +92,7 @@ func TestPollerClampsNegativeAccrual(t *testing.T) {
 
 func TestPollerPositiveAccrualUnchanged(t *testing.T) {
 	repo := newMockRepo("79927398713")
-	p := NewPoller(repo, &stubFetcher{info: &OrderInfo{Order: "79927398713", Status: "PROCESSED", Accrual: 100.5}})
+	p := newTestPoller(repo, &stubFetcher{info: &OrderInfo{Order: "79927398713", Status: "PROCESSED", Accrual: 100.5}})
 	p.process(context.Background(), "79927398713")
 	s, a := repo.get("79927398713")
 	assert.Equal(t, model.StatusProcessed, s)
@@ -108,7 +107,7 @@ func TestPollerReachesProcessed(t *testing.T) {
 	defer srv.Close()
 
 	repo := newMockRepo("79927398713")
-	p := NewPoller(repo, NewClient(srv.URL))
+	p := newTestPoller(repo, NewClient(srv.URL, zap.NewNop()))
 	p.period = 20 * time.Millisecond
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -131,7 +130,7 @@ func TestPollerThrottlesOn429(t *testing.T) {
 	}))
 	defer srv.Close()
 	repo := newMockRepo("79927398713")
-	p := NewPoller(repo, NewClient(srv.URL))
+	p := newTestPoller(repo, NewClient(srv.URL, zap.NewNop()))
 	p.period = 10 * time.Millisecond
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -146,7 +145,7 @@ func TestPollerThrottlesOn429(t *testing.T) {
 
 func TestPollerProcessSkipsWhenThrottled(t *testing.T) {
 	fc := &countingFetcher{retryAfter: time.Hour}
-	p := NewPoller(newMockRepo("79927398713"), fc)
+	p := newTestPoller(newMockRepo("79927398713"), fc)
 	p.throttle(time.Hour)
 	p.process(context.Background(), "79927398713")
 	assert.Zero(t, atomic.LoadInt32(&fc.calls), "process must early-return while throttled")
@@ -160,7 +159,7 @@ func TestPollerThrottleBoundsBurst(t *testing.T) {
 	}
 	fc := &countingFetcher{retryAfter: time.Second}
 	repo := newMockRepo(nums...)
-	p := NewPoller(repo, fc)
+	p := newTestPoller(repo, fc)
 	p.period = 10 * time.Millisecond
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -183,7 +182,7 @@ func TestPollerGracefulShutdown(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
 	defer srv.Close()
 	repo := newMockRepo("1", "2", "3")
-	p := NewPoller(repo, NewClient(srv.URL))
+	p := newTestPoller(repo, NewClient(srv.URL, zap.NewNop()))
 	p.period = 10 * time.Millisecond
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})

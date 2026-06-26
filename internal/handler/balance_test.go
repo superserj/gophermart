@@ -21,7 +21,7 @@ func authedBal(method, target, body string) *http.Request {
 }
 
 func TestBalanceOK(t *testing.T) {
-	h := &Handler{store: &fakeStore{balCurrent: money.FromFloat(729.98), balWithdrawn: 0}}
+	h := handlerWith(&fakeStore{balCurrent: money.FromFloat(729.98), balWithdrawn: 0})
 	rr := httptest.NewRecorder()
 	h.Balance(rr, authedBal(http.MethodGet, "/api/user/balance", ""))
 	require.Equal(t, http.StatusOK, rr.Code)
@@ -33,14 +33,14 @@ func TestBalanceOK(t *testing.T) {
 }
 
 func TestBalanceUnauthorized(t *testing.T) {
-	h := &Handler{store: &fakeStore{}}
+	h := handlerWith(&fakeStore{})
 	rr := httptest.NewRecorder()
 	h.Balance(rr, httptest.NewRequest(http.MethodGet, "/api/user/balance", nil))
 	require.Equal(t, http.StatusUnauthorized, rr.Code)
 }
 
 func TestBalanceInternalError(t *testing.T) {
-	h := &Handler{store: &fakeStore{balErr: context.DeadlineExceeded}}
+	h := handlerWith(&fakeStore{balErr: context.DeadlineExceeded})
 	rr := httptest.NewRecorder()
 	h.Balance(rr, authedBal(http.MethodGet, "/api/user/balance", ""))
 	require.Equal(t, http.StatusInternalServerError, rr.Code)

@@ -15,7 +15,7 @@ import (
 
 func TestWithdrawalsOK(t *testing.T) {
 	ts, _ := time.Parse(time.RFC3339, "2020-12-09T16:09:57+03:00")
-	h := &Handler{store: &fakeStore{list: []model.Withdrawal{{Order: "2377225624", Sum: money.FromFloat(500), ProcessedAt: ts}}}}
+	h := handlerWith(&fakeStore{list: []model.Withdrawal{{Order: "2377225624", Sum: money.FromFloat(500), ProcessedAt: ts}}})
 	rr := httptest.NewRecorder()
 	h.Withdrawals(rr, authedBal(http.MethodGet, "/api/user/withdrawals", ""))
 	require.Equal(t, http.StatusOK, rr.Code)
@@ -24,21 +24,21 @@ func TestWithdrawalsOK(t *testing.T) {
 }
 
 func TestWithdrawalsNoContent(t *testing.T) {
-	h := &Handler{store: &fakeStore{list: nil}}
+	h := handlerWith(&fakeStore{list: nil})
 	rr := httptest.NewRecorder()
 	h.Withdrawals(rr, authedBal(http.MethodGet, "/api/user/withdrawals", ""))
 	require.Equal(t, http.StatusNoContent, rr.Code)
 }
 
 func TestWithdrawalsUnauthorized(t *testing.T) {
-	h := &Handler{store: &fakeStore{}}
+	h := handlerWith(&fakeStore{})
 	rr := httptest.NewRecorder()
 	h.Withdrawals(rr, httptest.NewRequest(http.MethodGet, "/api/user/withdrawals", nil))
 	require.Equal(t, http.StatusUnauthorized, rr.Code)
 }
 
 func TestWithdrawalsInternalError(t *testing.T) {
-	h := &Handler{store: &fakeStore{listErr: context.DeadlineExceeded}}
+	h := handlerWith(&fakeStore{listErr: context.DeadlineExceeded})
 	rr := httptest.NewRecorder()
 	h.Withdrawals(rr, authedBal(http.MethodGet, "/api/user/withdrawals", ""))
 	require.Equal(t, http.StatusInternalServerError, rr.Code)

@@ -1,7 +1,6 @@
 package repository
 
 import (
-	"context"
 	"errors"
 	"sync"
 	"testing"
@@ -12,16 +11,16 @@ import (
 	"github.com/superserj/gophermart/internal/money"
 )
 
-func seedProcessed(t *testing.T, st *DBStorage, uid int64, number string, accrual money.Points) {
+func seedProcessed(t *testing.T, st *DBStorage, uid string, number string, accrual money.Points) {
 	t.Helper()
-	_, err := st.SaveOrder(context.Background(), number, uid)
+	_, err := st.SaveOrder(t.Context(), number, uid)
 	require.NoError(t, err)
-	require.NoError(t, st.ApplyAccrual(context.Background(), number, model.StatusProcessed, accrual))
+	require.NoError(t, st.ApplyAccrual(t.Context(), number, model.StatusProcessed, accrual))
 }
 
 func TestGetBalanceAccrualOnly(t *testing.T) {
 	st := newTestStore(t)
-	ctx := context.Background()
+	ctx := t.Context()
 	uid := mustCreateUser(t, st, "u1")
 
 	seedProcessed(t, st, uid, "9278923470", money.FromFloat(729.98))
@@ -36,7 +35,7 @@ func TestGetBalanceAccrualOnly(t *testing.T) {
 func TestGetBalanceEmpty(t *testing.T) {
 	st := newTestStore(t)
 	uid := mustCreateUser(t, st, "u1")
-	current, withdrawn, err := st.GetBalance(context.Background(), uid)
+	current, withdrawn, err := st.GetBalance(t.Context(), uid)
 	require.NoError(t, err)
 	require.Equal(t, money.Points(0), current)
 	require.Equal(t, money.Points(0), withdrawn)
@@ -44,7 +43,7 @@ func TestGetBalanceEmpty(t *testing.T) {
 
 func TestWithdrawSuccessAndList(t *testing.T) {
 	st := newTestStore(t)
-	ctx := context.Background()
+	ctx := t.Context()
 	uid := mustCreateUser(t, st, "u1")
 	seedProcessed(t, st, uid, "9278923470", money.FromFloat(1000))
 
@@ -64,7 +63,7 @@ func TestWithdrawSuccessAndList(t *testing.T) {
 
 func TestWithdrawInsufficient(t *testing.T) {
 	st := newTestStore(t)
-	ctx := context.Background()
+	ctx := t.Context()
 	uid := mustCreateUser(t, st, "u1")
 	seedProcessed(t, st, uid, "9278923470", money.FromFloat(100))
 	err := st.Withdraw(ctx, uid, "2377225624", money.FromFloat(300))
@@ -76,7 +75,7 @@ func TestWithdrawInsufficient(t *testing.T) {
 
 func TestWithdrawConcurrentSerialization(t *testing.T) {
 	st := newTestStore(t)
-	ctx := context.Background()
+	ctx := t.Context()
 	uid := mustCreateUser(t, st, "u1")
 	seedProcessed(t, st, uid, "9278923470", money.FromFloat(100))
 

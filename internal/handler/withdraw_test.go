@@ -15,7 +15,7 @@ import (
 
 func TestWithdrawHandlerBodyTooLarge(t *testing.T) {
 	f := &fakeStore{}
-	h := &Handler{store: f}
+	h := handlerWith(f)
 	body := `{"order":"` + strings.Repeat("7", maxJSONBodyBytes+1) + `","sum":10}`
 	rr := httptest.NewRecorder()
 	h.Withdraw(rr, authedBal(http.MethodPost, "/api/user/balance/withdraw", body))
@@ -25,17 +25,17 @@ func TestWithdrawHandlerBodyTooLarge(t *testing.T) {
 
 func TestWithdrawHandlerOK(t *testing.T) {
 	f := &fakeStore{}
-	h := &Handler{store: f}
+	h := handlerWith(f)
 	rr := httptest.NewRecorder()
 	h.Withdraw(rr, authedBal(http.MethodPost, "/api/user/balance/withdraw", `{"order":"2377225624","sum":729.98}`))
 	require.Equal(t, http.StatusOK, rr.Code)
-	require.Equal(t, int64(7), f.gotUserID)
+	require.Equal(t, "7", f.gotUserID)
 	require.Equal(t, "2377225624", f.gotOrder)
 	require.Equal(t, money.FromFloat(729.98), f.gotSum)
 }
 
 func TestWithdrawHandlerInsufficient(t *testing.T) {
-	h := &Handler{store: &fakeStore{withdrawErr: repository.ErrInsufficientFunds}}
+	h := handlerWith(&fakeStore{withdrawErr: repository.ErrInsufficientFunds})
 	rr := httptest.NewRecorder()
 	h.Withdraw(rr, authedBal(http.MethodPost, "/api/user/balance/withdraw", `{"order":"2377225624","sum":10}`))
 	require.Equal(t, http.StatusPaymentRequired, rr.Code)
@@ -43,7 +43,7 @@ func TestWithdrawHandlerInsufficient(t *testing.T) {
 
 func TestWithdrawHandlerBadLuhn(t *testing.T) {
 	f := &fakeStore{}
-	h := &Handler{store: f}
+	h := handlerWith(f)
 	rr := httptest.NewRecorder()
 	h.Withdraw(rr, authedBal(http.MethodPost, "/api/user/balance/withdraw", `{"order":"12345678902","sum":10}`))
 	require.Equal(t, http.StatusUnprocessableEntity, rr.Code)
@@ -52,7 +52,7 @@ func TestWithdrawHandlerBadLuhn(t *testing.T) {
 
 func TestWithdrawHandlerNonPositiveSum(t *testing.T) {
 	f := &fakeStore{}
-	h := &Handler{store: f}
+	h := handlerWith(f)
 	rr := httptest.NewRecorder()
 	h.Withdraw(rr, authedBal(http.MethodPost, "/api/user/balance/withdraw", `{"order":"2377225624","sum":-5}`))
 	require.Equal(t, http.StatusUnprocessableEntity, rr.Code)
@@ -60,21 +60,21 @@ func TestWithdrawHandlerNonPositiveSum(t *testing.T) {
 }
 
 func TestWithdrawHandlerUnauthorized(t *testing.T) {
-	h := &Handler{store: &fakeStore{}}
+	h := handlerWith(&fakeStore{})
 	rr := httptest.NewRecorder()
 	h.Withdraw(rr, httptest.NewRequest(http.MethodPost, "/api/user/balance/withdraw", nil))
 	require.Equal(t, http.StatusUnauthorized, rr.Code)
 }
 
 func TestWithdrawHandlerBadJSON(t *testing.T) {
-	h := &Handler{store: &fakeStore{}}
+	h := handlerWith(&fakeStore{})
 	rr := httptest.NewRecorder()
 	h.Withdraw(rr, authedBal(http.MethodPost, "/api/user/balance/withdraw", `{bad`))
 	require.Equal(t, http.StatusBadRequest, rr.Code)
 }
 
 func TestWithdrawHandlerInternal(t *testing.T) {
-	h := &Handler{store: &fakeStore{withdrawErr: context.DeadlineExceeded}}
+	h := handlerWith(&fakeStore{withdrawErr: context.DeadlineExceeded})
 	rr := httptest.NewRecorder()
 	h.Withdraw(rr, authedBal(http.MethodPost, "/api/user/balance/withdraw", `{"order":"2377225624","sum":10}`))
 	require.Equal(t, http.StatusInternalServerError, rr.Code)

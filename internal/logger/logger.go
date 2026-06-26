@@ -1,3 +1,4 @@
+// Package logger строит продакшн-логгер и middleware логирования HTTP-запросов.
 package logger
 
 import (
@@ -7,23 +8,16 @@ import (
 	"go.uber.org/zap"
 )
 
-// Log — глобальный логгер. До вызова Initialize — no-op.
-var Log *zap.Logger = zap.NewNop()
-
-// Initialize настраивает глобальный Log на продакшн-конфигурацию с заданным уровнем.
-func Initialize(level string) error {
+// New строит продакшн-логгер с заданным уровнем. Логгер передаётся компонентам
+// явно (через конструкторы), без глобального состояния.
+func New(level string) (*zap.Logger, error) {
 	lvl, err := zap.ParseAtomicLevel(level)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	cfg := zap.NewProductionConfig()
 	cfg.Level = lvl
-	zl, err := cfg.Build()
-	if err != nil {
-		return err
-	}
-	Log = zl
-	return nil
+	return cfg.Build()
 }
 
 type responseData struct {
@@ -47,19 +41,22 @@ func (w *loggingResponseWriter) WriteHeader(statusCode int) {
 	w.data.status = statusCode
 }
 
-// WithLogging — middleware, логирующий метод, URI, статус, размер и длительность запроса.
-func WithLogging(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		data := &responseData{status: http.StatusOK}
-		lw := &loggingResponseWriter{ResponseWriter: w, data: data}
-		next.ServeHTTP(lw, r)
-		Log.Info("request",
-			zap.String("uri", r.RequestURI),
-			zap.String("method", r.Method),
-			zap.Int("status", data.status),
-			zap.Duration("duration", time.Since(start)),
-			zap.Int("size", data.size),
-		)
-	})
+// WithLogging возвращает middleware, логирующий метод, URI, статус, размер и
+// длительность запроса через переданный логгер.
+func WithLogging(log *zap.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+			data := &responseData{status: http.StatusOK}
+			lw := &loggingResponseWriter{ResponseWriter: w, data: data}
+			next.ServeHTTP(lw, r)
+			log.Info("request",
+				zap.String("uri", r.RequestURI),
+				zap.String("method", r.Method),
+				zap.Int("status", data.status),
+				zap.Duration("duration", time.Since(start)),
+				zap.Int("size", data.size),
+			)
+		})
+	}
 }

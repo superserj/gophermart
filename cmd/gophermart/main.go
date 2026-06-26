@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os/signal"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/superserj/gophermart/internal/accrual"
 	"github.com/superserj/gophermart/internal/auth"
@@ -19,71 +21,94 @@ import (
 	"github.com/superserj/gophermart/internal/repository"
 )
 
+const (
+	shutdownTimeout   = 5 * time.Second
+	readHeaderTimeout = 10 * time.Second // защита от slowloris (gosec G112)
+	readTimeout       = 30 * time.Second
+	writeTimeout      = 30 * time.Second
+	idleTimeout       = 60 * time.Second
+)
+
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// run собирает зависимости и обслуживает сервис до сигнала завершения.
+// Единственная точка выхода — main(): все ошибки возвращаются наружу, чтобы
+// defer-функции (в т.ч. закрытие пула БД) гарантированно отработали.
+func run() error {
 	cfg, err := config.New()
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
-	if err := logger.Initialize(cfg.LogLevel); err != nil {
-		log.Fatal(err)
+	lg, err := logger.New(cfg.LogLevel)
+	if err != nil {
+		return err
 	}
+	defer func() { _ = lg.Sync() }()
+
 	if cfg.DatabaseURI == "" {
-		logger.Log.Fatal("DATABASE_URI is required")
+		return errors.New("DATABASE_URI is required")
+	}
+	secret, err := config.ResolveSecret(cfg.AuthSecret)
+	if err != nil {
+		return fmt.Errorf("resolve auth secret: %w", err)
+	}
+	if cfg.AuthSecret == "" {
+		lg.Warn("AUTH_SECRET не задан, используется эфемерный случайный секрет")
 	}
 
 	repo, err := repository.NewDBStorage(context.Background(), cfg.DatabaseURI)
 	if err != nil {
-		logger.Log.Fatal("init repository", zap.Error(err))
+		return fmt.Errorf("init repository: %w", err)
 	}
 	defer func() {
 		if cerr := repo.Close(); cerr != nil {
-			logger.Log.Error("close repository", zap.Error(cerr))
+			lg.Error("close repository", zap.Error(cerr))
 		}
 	}()
 
-	secret, err := config.ResolveSecret(cfg.AuthSecret)
-	if err != nil {
-		logger.Log.Fatal("resolve auth secret", zap.Error(err))
-	}
-	if cfg.AuthSecret == "" {
-		logger.Log.Warn("AUTH_SECRET не задан, используется эфемерный случайный секрет")
-	}
 	a := auth.New(secret)
-	h := handler.New(repo, a)
-
-	pollCtx, pollCancel := context.WithCancel(context.Background())
-	poller := accrual.NewPoller(repo, accrual.NewClient(cfg.AccrualSystemAddress))
-	pollDone := make(chan struct{})
-	go func() {
-		poller.Run(pollCtx)
-		close(pollDone)
-	}()
-
+	h := handler.New(repo, a, lg)
 	srv := &http.Server{
 		Addr:              cfg.RunAddress,
 		Handler:           handler.NewRouter(h, a),
-		ReadHeaderTimeout: 10 * time.Second, // защита от slowloris (gosec G112)
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       60 * time.Second,
+		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		WriteTimeout:      writeTimeout,
+		IdleTimeout:       idleTimeout,
 	}
-	go func() {
-		logger.Log.Info("starting server", zap.String("addr", cfg.RunAddress))
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Log.Fatal("listen and serve", zap.Error(err))
-		}
-	}()
+	poller := accrual.NewPoller(
+		repo,
+		accrual.NewClient(cfg.AccrualSystemAddress, lg.With(zap.String("component", "accrual"))),
+		lg.With(zap.String("component", "poller")),
+	)
 
 	sigCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	<-sigCtx.Done()
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		logger.Log.Error("server shutdown", zap.Error(err))
-	}
-
-	pollCancel()
-	<-pollDone
+	g, gctx := errgroup.WithContext(sigCtx)
+	g.Go(func() error {
+		lg.Info("starting server", zap.String("addr", cfg.RunAddress))
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("listen and serve: %w", err)
+		}
+		return nil
+	})
+	g.Go(func() error {
+		poller.Run(gctx)
+		return nil
+	})
+	g.Go(func() error {
+		<-gctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("server shutdown: %w", err)
+		}
+		return nil
+	})
+	return g.Wait()
 }

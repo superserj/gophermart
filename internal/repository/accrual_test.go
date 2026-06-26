@@ -1,7 +1,6 @@
 package repository
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,7 +12,7 @@ import (
 
 func TestApplyAccrualIdempotent(t *testing.T) {
 	st := newTestStore(t)
-	ctx := context.Background()
+	ctx := t.Context()
 	u := mustCreateUser(t, st, "u1")
 	const number = "79927398713"
 	_, err := st.SaveOrder(ctx, number, u)
@@ -36,7 +35,7 @@ func TestApplyAccrualIdempotent(t *testing.T) {
 
 func TestListUnfinishedOrders(t *testing.T) {
 	st := newTestStore(t)
-	ctx := context.Background()
+	ctx := t.Context()
 	u := mustCreateUser(t, st, "u1")
 	_, err := st.SaveOrder(ctx, "79927398713", u)
 	require.NoError(t, err)

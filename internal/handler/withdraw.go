@@ -7,7 +7,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/superserj/gophermart/internal/logger"
 	"github.com/superserj/gophermart/internal/luhn"
 	"github.com/superserj/gophermart/internal/model"
 	"github.com/superserj/gophermart/internal/money"
@@ -40,7 +39,7 @@ func (h *Handler) Withdraw(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, repository.ErrInsufficientFunds):
 		http.Error(w, "insufficient funds", http.StatusPaymentRequired)
 	default:
-		logger.Log.Warn("withdraw failed", zap.Error(err))
-		http.Error(w, "withdraw failed", http.StatusInternalServerError)
+		h.log.Warn("withdraw failed", zap.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 	}
 }

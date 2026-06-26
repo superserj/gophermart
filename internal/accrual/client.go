@@ -10,6 +10,19 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"go.uber.org/zap"
+)
+
+const (
+	// requestTimeout — таймаут одного обращения к accrual (на все попытки суммарно).
+	requestTimeout = 5 * time.Second
+	// maxAttempts — общее число попыток запроса: одна основная плюс ретраи.
+	maxAttempts = 3
+	// retryBackoff — базовая пауза между попытками; растёт линейно с номером попытки.
+	retryBackoff = 100 * time.Millisecond
+	// defaultRetryAfter — пауза по умолчанию, если 429 пришёл без валидного Retry-After.
+	defaultRetryAfter = time.Second
 )
 
 // ErrNoContent — accrual вернул 204: заказ ещё не зарегистрирован.
@@ -36,11 +49,20 @@ type OrderInfo struct {
 type Client struct {
 	baseURL string
 	http    *http.Client
+	log     *zap.Logger
 }
 
-// NewClient создаёт клиент с таймаутом 5 с.
-func NewClient(baseURL string) *Client {
-	return &Client{baseURL: strings.TrimRight(baseURL, "/"), http: &http.Client{Timeout: 5 * time.Second}}
+// NewClient создаёт клиент с таймаутом requestTimeout и прозрачными ретраями
+// транспортного уровня на сетевые ошибки и 5xx. Логгер передаётся явно.
+func NewClient(baseURL string, log *zap.Logger) *Client {
+	return &Client{
+		baseURL: strings.TrimRight(baseURL, "/"),
+		http: &http.Client{
+			Timeout:   requestTimeout,
+			Transport: &retryTransport{base: http.DefaultTransport, attempts: maxAttempts, backoff: retryBackoff},
+		},
+		log: log,
+	}
 }
 
 // GetOrder запрашивает GET /api/orders/{number}.
@@ -65,15 +87,58 @@ func (c *Client) GetOrder(ctx context.Context, number string) (*OrderInfo, error
 	case http.StatusNoContent:
 		return nil, ErrNoContent
 	case http.StatusTooManyRequests:
-		return nil, &TooManyRequestsError{RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After"))}
+		return nil, &TooManyRequestsError{RetryAfter: c.parseRetryAfter(resp.Header.Get("Retry-After"))}
 	default:
 		return nil, fmt.Errorf("accrual: unexpected status %d", resp.StatusCode)
 	}
 }
 
-func parseRetryAfter(v string) time.Duration {
-	if secs, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && secs > 0 {
-		return time.Duration(secs) * time.Second
+// parseRetryAfter переводит заголовок Retry-After в длительность. Непустое, но
+// непарсимое значение логируется: это сигнал возможной смены контракта accrual.
+func (c *Client) parseRetryAfter(v string) time.Duration {
+	trimmed := strings.TrimSpace(v)
+	secs, err := strconv.Atoi(trimmed)
+	if err != nil {
+		if trimmed != "" {
+			c.log.Warn("accrual: unparseable Retry-After header", zap.String("value", v))
+		}
+		return defaultRetryAfter
 	}
-	return time.Second
+	if secs <= 0 {
+		return defaultRetryAfter
+	}
+	return time.Duration(secs) * time.Second
+}
+
+// retryTransport — http.RoundTripper, повторяющий запрос на сетевых ошибках и 5xx.
+// Применяется только к идемпотентным GET-запросам без тела, поэтому повтор безопасен.
+type retryTransport struct {
+	base     http.RoundTripper
+	attempts int
+	backoff  time.Duration
+}
+
+func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	var (
+		resp *http.Response
+		err  error
+	)
+	for attempt := 1; attempt <= t.attempts; attempt++ {
+		resp, err = t.base.RoundTrip(req)
+		if err == nil && resp.StatusCode < http.StatusInternalServerError {
+			return resp, nil
+		}
+		if attempt == t.attempts {
+			break
+		}
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
+		select {
+		case <-req.Context().Done():
+			return nil, req.Context().Err()
+		case <-time.After(t.backoff * time.Duration(attempt)):
+		}
+	}
+	return resp, err
 }

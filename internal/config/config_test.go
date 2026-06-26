@@ -60,17 +60,20 @@ func TestFlags(t *testing.T) {
 	}
 }
 
-func TestEnvOverridesFlags(t *testing.T) {
+func TestFlagsOverrideEnv(t *testing.T) {
 	env := map[string]string{
 		"RUN_ADDRESS": "0.0.0.0:7000", "DATABASE_URI": "postgres://env",
 		"ACCRUAL_SYSTEM_ADDRESS": "http://env:1", "AUTH_SECRET": "env-secret", "LOG_LEVEL": "warn",
 	}
+	// -a и -d заданы флагами → перекрывают ENV; остальные поля берутся из ENV.
 	cfg, err := Parse([]string{"-a", "127.0.0.1:9000", "-d", "postgres://flag"}, lookup(env))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.RunAddress != "0.0.0.0:7000" || cfg.DatabaseURI != "postgres://env" ||
-		cfg.AccrualSystemAddress != "http://env:1" || cfg.AuthSecret != "env-secret" || cfg.LogLevel != "warn" {
-		t.Fatalf("env did not override: %+v", cfg)
+	if cfg.RunAddress != "127.0.0.1:9000" || cfg.DatabaseURI != "postgres://flag" {
+		t.Fatalf("flags must override env: %+v", cfg)
+	}
+	if cfg.AccrualSystemAddress != "http://env:1" || cfg.AuthSecret != "env-secret" || cfg.LogLevel != "warn" {
+		t.Fatalf("env must fill fields without flags: %+v", cfg)
 	}
 }

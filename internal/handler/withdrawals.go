@@ -5,8 +5,6 @@ import (
 	"net/http"
 
 	"go.uber.org/zap"
-
-	"github.com/superserj/gophermart/internal/logger"
 )
 
 // Withdrawals — GET /api/user/withdrawals.
@@ -18,8 +16,8 @@ func (h *Handler) Withdrawals(w http.ResponseWriter, r *http.Request) {
 	}
 	list, err := h.store.ListWithdrawals(r.Context(), userID)
 	if err != nil {
-		logger.Log.Warn("list withdrawals failed", zap.Error(err))
-		http.Error(w, "withdrawals failed", http.StatusInternalServerError)
+		h.log.Warn("list withdrawals failed", zap.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	if len(list) == 0 {

@@ -1,7 +1,6 @@
 package repository
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -13,7 +12,7 @@ import (
 
 func TestSaveOrder(t *testing.T) {
 	st := newTestStore(t)
-	ctx := context.Background()
+	ctx := t.Context()
 	u1 := mustCreateUser(t, st, "u1")
 	u2 := mustCreateUser(t, st, "u2")
 
@@ -31,13 +30,16 @@ func TestSaveOrder(t *testing.T) {
 
 func TestListOrdersByUser(t *testing.T) {
 	st := newTestStore(t)
-	ctx := context.Background()
+	ctx := t.Context()
 	u := mustCreateUser(t, st, "u1")
 
-	_, err := st.SaveOrder(ctx, "9278923470", u)
-	require.NoError(t, err)
-	time.Sleep(2 * time.Millisecond)
-	_, err = st.SaveOrder(ctx, "12345678903", u)
+	// Явные uploaded_at делают порядок сортировки детерминированным и не зависят
+	// от точности системного таймера между двумя вставками (флак на медленном CI).
+	older := time.Date(2020, 1, 1, 10, 0, 0, 0, time.UTC)
+	newer := older.Add(time.Hour)
+	_, err := st.pool.Exec(ctx,
+		`INSERT INTO orders (number, user_id, uploaded_at) VALUES ($1, $2::bigint, $3), ($4, $2::bigint, $5)`,
+		"9278923470", u, older, "12345678903", newer)
 	require.NoError(t, err)
 
 	orders, err := st.ListOrdersByUser(ctx, u)
@@ -46,7 +48,7 @@ func TestListOrdersByUser(t *testing.T) {
 	assert.Equal(t, "12345678903", orders[0].Number) // newest first
 	assert.Equal(t, model.StatusNew, orders[0].Status)
 
-	none, err := st.ListOrdersByUser(ctx, 99999)
+	none, err := st.ListOrdersByUser(ctx, "99999")
 	require.NoError(t, err)
 	assert.Empty(t, none)
 }

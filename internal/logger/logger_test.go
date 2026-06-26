@@ -4,25 +4,25 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"go.uber.org/zap"
 )
 
-func TestInitialize(t *testing.T) {
-	if err := Initialize("info"); err != nil {
+func TestNew(t *testing.T) {
+	log, err := New("info")
+	if err != nil {
 		t.Fatalf("valid level: unexpected error %v", err)
 	}
-	if Log == nil {
-		t.Fatal("Log must be set after Initialize")
+	if log == nil {
+		t.Fatal("New must return a logger")
 	}
-	if err := Initialize("nonsense"); err == nil {
+	if _, err := New("nonsense"); err == nil {
 		t.Fatal("invalid level must return error")
 	}
 }
 
 func TestWithLogging(t *testing.T) {
-	if err := Initialize("info"); err != nil {
-		t.Fatalf("initialize: %v", err)
-	}
-	h := WithLogging(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := WithLogging(zap.NewNop())(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte("hello"))
 	}))

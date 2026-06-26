@@ -6,7 +6,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/superserj/gophermart/internal/logger"
 	"github.com/superserj/gophermart/internal/model"
 )
 
@@ -19,8 +18,8 @@ func (h *Handler) Balance(w http.ResponseWriter, r *http.Request) {
 	}
 	current, withdrawn, err := h.store.GetBalance(r.Context(), userID)
 	if err != nil {
-		logger.Log.Warn("get balance failed", zap.Error(err))
-		http.Error(w, "balance failed", http.StatusInternalServerError)
+		h.log.Warn("get balance failed", zap.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

@@ -10,7 +10,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/superserj/gophermart/internal/logger"
 	"github.com/superserj/gophermart/internal/luhn"
 	"github.com/superserj/gophermart/internal/repository"
 )
@@ -48,8 +47,8 @@ func (h *Handler) UploadOrder(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "order belongs to another user", http.StatusConflict)
 			return
 		}
-		logger.Log.Warn("save order failed", zap.Error(err))
-		http.Error(w, "save failed", http.StatusInternalServerError)
+		h.log.Warn("save order failed", zap.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	if existed {
@@ -68,8 +67,8 @@ func (h *Handler) ListOrders(w http.ResponseWriter, r *http.Request) {
 	}
 	orders, err := h.store.ListOrdersByUser(r.Context(), userID)
 	if err != nil {
-		logger.Log.Warn("list orders failed", zap.Error(err))
-		http.Error(w, "list failed", http.StatusInternalServerError)
+		h.log.Warn("list orders failed", zap.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

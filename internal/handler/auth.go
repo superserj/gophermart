@@ -4,12 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strconv"
 
 	"go.uber.org/zap"
 
 	"github.com/superserj/gophermart/internal/auth"
-	"github.com/superserj/gophermart/internal/logger"
 	"github.com/superserj/gophermart/internal/model"
 	"github.com/superserj/gophermart/internal/repository"
 )
@@ -31,8 +29,8 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 	hash, err := auth.HashPassword(req.Password)
 	if err != nil {
-		logger.Log.Warn("hash password failed", zap.Error(err))
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		h.log.Warn("hash password failed", zap.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	id, err := h.store.CreateUser(r.Context(), req.Login, hash)
@@ -41,11 +39,11 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "login already taken", http.StatusConflict)
 			return
 		}
-		logger.Log.Warn("create user failed", zap.Error(err))
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		h.log.Warn("create user failed", zap.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	h.auth.SetAuthCookie(w, strconv.FormatInt(id, 10))
+	h.auth.SetAuthCookie(w, id)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -66,14 +64,14 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid login or password", http.StatusUnauthorized)
 			return
 		}
-		logger.Log.Warn("get user failed", zap.Error(err))
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		h.log.Warn("get user failed", zap.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	if err := auth.CheckPassword(hash, req.Password); err != nil {
 		http.Error(w, "invalid login or password", http.StatusUnauthorized)
 		return
 	}
-	h.auth.SetAuthCookie(w, strconv.FormatInt(id, 10))
+	h.auth.SetAuthCookie(w, id)
 	w.WriteHeader(http.StatusOK)
 }

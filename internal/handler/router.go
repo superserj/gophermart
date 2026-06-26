@@ -12,7 +12,7 @@ import (
 // публичные register/login и /ping, защищённая группа под RequireAuth.
 func NewRouter(h *Handler, a *auth.Authenticator) chi.Router {
 	r := chi.NewRouter()
-	r.Use(logger.WithLogging)
+	r.Use(logger.WithLogging(h.log))
 	r.Use(middleware.Gzip)
 
 	r.Post("/api/user/register", h.Register)

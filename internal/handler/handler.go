@@ -3,7 +3,8 @@ package handler
 import (
 	"context"
 	"net/http"
-	"strconv"
+
+	"go.uber.org/zap"
 
 	"github.com/superserj/gophermart/internal/auth"
 	"github.com/superserj/gophermart/internal/model"
@@ -11,37 +12,37 @@ import (
 )
 
 // Store — зависимости HTTP-слоя. Интерфейс растёт по инкрементам.
+// Идентификатор пользователя передаётся строкой: HTTP-слой обращается с ним как
+// с непрозрачным токеном, а формат хранения известен только репозиторию.
 type Store interface {
 	Ping(ctx context.Context) error
-	CreateUser(ctx context.Context, login, passwordHash string) (int64, error)
-	GetUserByLogin(ctx context.Context, login string) (int64, string, error)
-	SaveOrder(ctx context.Context, number string, userID int64) (bool, error)
-	ListOrdersByUser(ctx context.Context, userID int64) ([]model.Order, error)
-	GetBalance(ctx context.Context, userID int64) (current, withdrawn money.Points, err error)
-	Withdraw(ctx context.Context, userID int64, order string, sum money.Points) error
-	ListWithdrawals(ctx context.Context, userID int64) ([]model.Withdrawal, error)
+	CreateUser(ctx context.Context, login, passwordHash string) (string, error)
+	GetUserByLogin(ctx context.Context, login string) (id, passwordHash string, err error)
+	SaveOrder(ctx context.Context, number, userID string) (bool, error)
+	ListOrdersByUser(ctx context.Context, userID string) ([]model.Order, error)
+	GetBalance(ctx context.Context, userID string) (current, withdrawn money.Points, err error)
+	Withdraw(ctx context.Context, userID, order string, sum money.Points) error
+	ListWithdrawals(ctx context.Context, userID string) ([]model.Withdrawal, error)
 }
 
 // Handler держит зависимости HTTP-слоя.
 type Handler struct {
 	store Store
 	auth  *auth.Authenticator
+	log   *zap.Logger
 }
 
-// New собирает Handler.
-func New(store Store, a *auth.Authenticator) *Handler {
-	return &Handler{store: store, auth: a}
+// New собирает Handler. Логгер передаётся явно, без обращения к глобальному состоянию.
+func New(store Store, a *auth.Authenticator, log *zap.Logger) *Handler {
+	return &Handler{store: store, auth: a, log: log}
 }
 
-// currentUserID извлекает int64-идентификатор из контекста (после RequireAuth).
-func currentUserID(r *http.Request) (int64, bool) {
+// currentUserID извлекает идентификатор пользователя из контекста (после
+// RequireAuth) как непрозрачную строку, не делая предположений о его формате.
+func currentUserID(r *http.Request) (string, bool) {
 	raw, ok := auth.UserIDFromContext(r.Context())
-	if !ok {
-		return 0, false
+	if !ok || raw == "" {
+		return "", false
 	}
-	id, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil {
-		return 0, false
-	}
-	return id, true
+	return raw, true
 }
